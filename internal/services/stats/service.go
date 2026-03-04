@@ -69,12 +69,22 @@ func todayStr() string {
 }
 
 // rolloverIfNeededLocked resets SessionsToday when the calendar day changes.
+// It also resets the streak if more than one day has passed since last activity.
 // Must be called with ss.mu held.
 func (ss *Service) rolloverIfNeededLocked() {
 	today := todayStr()
 	if ss.data.Date != today {
 		ss.data.Date = today
 		ss.data.SessionsToday = 0
+
+		// Check if streak should be reset (more than one day since last activity)
+		if ss.data.LastActiveDate != "" {
+			yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+			if ss.data.LastActiveDate != yesterday {
+				ss.data.Streak = 0
+			}
+		}
+
 		ss.save()
 	}
 }

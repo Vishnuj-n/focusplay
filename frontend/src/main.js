@@ -392,6 +392,7 @@ async function startSession(profile) {
   resumeBanner.style.display = 'none';
   await StartTimer(profile.id, profile.durationSec).catch(console.error);
   if (!isMuted && profile.musicPath && settings.autoStartAudio !== false) {
+    await SetVolume(settings.defaultVolume ?? 70).catch(console.error);
     if (profile.shuffle) await PlayShuffleFolder(profile.musicPath).catch(console.error);
     else                 await PlayLooping(profile.musicPath).catch(console.error);
   }
@@ -406,6 +407,7 @@ async function startBreak(profile) {
   updateModeBadge();
   await StartTimer(profile.id + '-break', profile.breakDurationSec).catch(console.error);
   if (!isMuted && settings.autoStartAudio !== false) {
+    await SetVolume(settings.defaultVolume ?? 70).catch(console.error);
     if (profile.breakMusicPath === '__none__') {
       // Explicitly no music for break
       await StopAudio().catch(console.error);
@@ -579,6 +581,7 @@ resumeBtn.addEventListener('click', async () => {
   // Restart audio for the resumed profile
   const prof = profiles.find(p => p.id === savedSession.profileId);
   if (!isMuted && prof && prof.musicPath && settings.autoStartAudio !== false) {
+    await SetVolume(settings.defaultVolume ?? 70).catch(console.error);
     if (prof.shuffle) await PlayShuffleFolder(prof.musicPath).catch(console.error);
     else              await PlayLooping(prof.musicPath).catch(console.error);
   }
