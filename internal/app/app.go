@@ -42,6 +42,11 @@ func New() *App {
 	}
 }
 
+// SetChimeData sets the embedded chime audio data in the audio service.
+func (a *App) SetChimeData(chimeData []byte) {
+	a.audio.SetChimeData(chimeData)
+}
+
 // Startup is called by Wails after the window is ready.
 func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
@@ -160,4 +165,10 @@ func (a *App) GetSettings() domain.Settings {
 
 func (a *App) SaveSettings(s domain.Settings) error {
 	return a.settings.Save(s)
+}
+
+// ── Audio chime methods (bound to JS) ───────────────────────────────────────
+
+func (a *App) PlayChime() {
+	a.audio.PlayChime()
 }

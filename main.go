@@ -13,8 +13,12 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
+//go:embed static/chime.mp3
+var chimeData []byte
+
 func main() {
 	a := app.New()
+	a.SetChimeData(chimeData)
 
 	err := wails.Run(&options.App{
 		Title:            "FocusPlay",

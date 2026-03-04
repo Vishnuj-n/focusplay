@@ -1,7 +1,9 @@
 package audio
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"math"
 	"math/rand"
 	"os"
@@ -22,12 +24,13 @@ import (
 // Service handles MP3 playback (single file loop or shuffle folder).
 // Silent-fails on missing / invalid files — never crashes the app.
 type Service struct {
-	mu      sync.Mutex
-	emitter events.Emitter
-	stopCh  chan struct{}
-	vol     float64         // 0.0 – 1.0
-	volCtrl *effects.Volume // currently-active volume control (nil when idle)
-	state   domain.AudioStatePayload
+	mu        sync.Mutex
+	emitter   events.Emitter
+	stopCh    chan struct{}
+	vol       float64         // 0.0 – 1.0
+	volCtrl   *effects.Volume // currently-active volume control (nil when idle)
+	state     domain.AudioStatePayload
+	chimeData []byte // embedded notification sound
 }
 
 // New creates a Service. Call SetEmitter after the Wails context is available.
@@ -37,6 +40,13 @@ func New() *Service {
 		emitter: events.Noop{},
 		state:   domain.AudioStatePayload{State: domain.AudioIdle},
 	}
+}
+
+// SetChimeData sets the embedded chime audio data.
+func (s *Service) SetChimeData(data []byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.chimeData = data
 }
 
 // SetEmitter replaces the emitter (called from App.startup with the live Wails emitter).
@@ -151,6 +161,48 @@ func (s *Service) GetState() domain.AudioStatePayload {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.state
+}
+
+// PlayChime plays the embedded notification chime sound (non-blocking).
+// Does not stop background music; plays independently.
+func (s *Service) PlayChime() {
+	go s.playChimeAsync()
+}
+
+func (s *Service) playChimeAsync() {
+	s.mu.Lock()
+	chimeData := s.chimeData
+	s.mu.Unlock()
+
+	if len(chimeData) == 0 {
+		return // chime not embedded
+	}
+
+	reader := bytes.NewReader(chimeData)
+	streamer, format, err := mp3.Decode(io.NopCloser(reader))
+	if err != nil {
+		return // silent fail
+	}
+	defer streamer.Close()
+
+	_ = speaker.Init(format.SampleRate, format.SampleRate.N(time.Second/10))
+
+	// Play at current volume
+	s.mu.Lock()
+	vol := &effects.Volume{
+		Streamer: streamer,
+		Base:     2,
+		Volume:   linearToLog(s.vol),
+		Silent:   s.vol == 0,
+	}
+	s.mu.Unlock()
+
+	done := make(chan struct{})
+	speaker.Play(beep.Seq(vol, beep.Callback(func() {
+		close(done)
+	})))
+
+	<-done
 }
 
 // ── internal ─────────────────────────────────────────────────────────────────
