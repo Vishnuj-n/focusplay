@@ -1,78 +1,76 @@
-name: Release FocusPlay
+name: Focusplsy build
 
 on:
   push:
     tags:
-      - 'v*' # Triggers workflow when you push a tag like v1.0.0
+      - '*'
+
+env:
+  NODE_OPTIONS: "--max-old-space-size=4096"
 
 jobs:
   build:
-    name: Build on ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        include:
+          - os: ubuntu-22.04
+            platform: linux/amd64
+            artifact: linux-amd64
+          - os: windows-latest
+            platform: windows/amd64
+            artifact: windows-amd64
+          - os: macos-latest
+            platform: darwin/universal
+            artifact: darwin-universal
+
     runs-on: ${{ matrix.os }}
 
+    permissions:
+      contents: write
+
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23' 
+          go-version: "1.22"
 
-      - name: Setup Node.js
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: "20"
 
-      # Linux requires specific system dependencies to compile Wails apps
-      - name: Install Linux Dependencies
+      - name: Install Linux dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev pkg-config
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libwebkit2gtk-4.0-dev \
+            libglib2.0-dev \
+            libasound2-dev \
+            pkg-config
 
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
-      - name: Build Windows
-        if: runner.os == 'Windows'
-        run: wails build --nsis
+      - name: Build application
+        run: wails build -platform ${{ matrix.platform }}
 
-      - name: Build macOS
-        if: runner.os == 'macOS'
-        run: wails build --platform darwin/universal
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.artifact }}
+          path: build/bin/**
 
-      - name: Build Linux
-        if: runner.os == 'Linux'
-        run: wails build --platform linux/amd64
-
-      # Prepare and Zip files for clean distribution
-      - name: Prepare Assets (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          cd build/bin
-          zip -r focusplay-macos-universal.zip focusplay.app
-
-      - name: Prepare Assets (Linux)
-        if: runner.os == 'Linux'
-        run: mv build/bin/focusplay build/bin/focusplay-linux-amd64
-
-      # Attach the compiled binaries to the GitHub Release
-      - name: Upload Windows Asset
-        if: runner.os == 'Windows'
+      - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: build/bin/*installer.exe
-
-      - name: Upload macOS Asset
-        if: runner.os == 'macOS'
-        uses: softprops/action-gh-release@v2
-        with:
-          files: build/bin/focusplay-macos-universal.zip
-
-      - name: Upload Linux Asset
-        if: runner.os == 'Linux'
-        uses: softprops/action-gh-release@v2
-        with:
-          files: build/bin/focusplay-linux-amd64
+          files: build/bin/**
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
