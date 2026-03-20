@@ -13,7 +13,7 @@ import { EventsOn } from '../wailsjs/runtime/runtime';
 import {
   WindowGetSize, WindowSetSize, WindowSetMinSize,
   WindowGetPosition, WindowSetPosition,
-  WindowSetAlwaysOnTop
+  WindowSetAlwaysOnTop, ScreenGetAll
 } from '../wailsjs/runtime/runtime';
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
@@ -331,12 +331,11 @@ EventsOn('timerCompleted', async () => {
   setRunningUI(false);
   fillEl.style.width = '0%';
 
-  // Play chime if enabled
-  if (settings.playSoundOnComplete !== false) {
-    PlayChime().catch(() => {});
-  }
-
   if (sessionType === 'work') {
+    // Work completion chime
+    if (settings.playSoundOnComplete !== false) {
+      PlayChime().catch(() => {});
+    }
     // Work session done — record stats
     try { updateStatsUI(await RecordSessionComplete()); } catch (_) {}
     if (settings.notifyOnComplete) {
@@ -348,6 +347,10 @@ EventsOn('timerCompleted', async () => {
       return;
     }
   } else {
+    // Break completion chime
+    if (settings.playSoundOnComplete !== false) {
+      PlayChime().catch(() => {});
+    }
     // Break done — switch back to work mode
     sessionType = 'work';
     totalSec    = activeProfile ? activeProfile.durationSec : 25 * 60;
@@ -455,6 +458,24 @@ function updateModeBadge() {
 // ── Mini widget (window-mode switching) ───────────────────────────────────────
 const MINI_W = 220;
 const MINI_H = 170;
+const MINI_MARGIN = 12;
+const MINI_RIGHT_INSET = 18;
+
+async function positionMiniTopRight() {
+  try {
+    const screens = await ScreenGetAll();
+    const current = screens.find(s => s.isCurrent) || screens.find(s => s.isPrimary);
+    const screenW = current?.width || window.innerWidth;
+    const size = await WindowGetSize();
+    const windowW = size?.w || MINI_W;
+    const x = Math.max(0, screenW - windowW - MINI_MARGIN - MINI_RIGHT_INSET);
+    WindowSetPosition(x, MINI_MARGIN);
+  } catch (_) {
+    // Fall back to viewport dimensions if screen data is unavailable.
+    const x = Math.max(0, window.innerWidth - MINI_W - MINI_MARGIN - MINI_RIGHT_INSET);
+    WindowSetPosition(x, MINI_MARGIN);
+  }
+}
 
 async function showMini() {
   if (isMiniMode) return;
@@ -470,6 +491,7 @@ async function showMini() {
 
   WindowSetMinSize(MINI_W, MINI_H);
   WindowSetSize(MINI_W, MINI_H);
+  await positionMiniTopRight();
   WindowSetAlwaysOnTop(true);
 }
 
@@ -489,8 +511,12 @@ async function hideMini() {
 }
 
 document.getElementById('openMini').addEventListener('click', () => {
-  if (!isMiniMode) showMini();
-  else hideMini();
+  if (!isMiniMode) {
+    showMini();
+    return;
+  }
+  // If mini mode is already active, treat this as a "snap to corner" action.
+  positionMiniTopRight();
 });
 miniExpand.addEventListener('click', hideMini);
 miniClose.addEventListener('click', async () => {
