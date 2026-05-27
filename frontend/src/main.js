@@ -80,6 +80,7 @@ let activeProfile = null;   // currently running profile
 let isMiniMode    = false;  // window is in compact mini-timer mode
 let savedWindowState = null; // { width, height, x, y } before entering mini mode
 let isMuted       = false;  // when true, skip audio playback even if profile has music
+let miniModeTimeout = null; // delayed mini-mode layout adjustment
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function fmt(s) {
@@ -92,6 +93,43 @@ function updateTimerUI(remaining, total) {
   timerEl.textContent = fmt(remaining);
   const pct = total > 0 ? ((total - remaining) / total) * 100 : 0;
   fillEl.style.width  = pct + '%';
+}
+
+function resolveProfileForSession(profileId, fallbackProfile = null) {
+  const isBreakSession = typeof profileId === 'string' && profileId.endsWith('-break');
+  const baseProfileId = isBreakSession ? profileId.slice(0, -6) : profileId;
+  const profile = profiles.find(p => p.id === baseProfileId) || fallbackProfile || activeProfile || profiles.find(p => p.id === profileSelect.value) || profiles[0] || null;
+  return { profile, sessionType: isBreakSession ? 'break' : 'work' };
+}
+
+async function startAudioForSession(profile, sessionType) {
+  if (!profile || isMuted || settings.autoStartAudio === false) return;
+
+  await SetVolume(settings.defaultVolume ?? 70).catch(console.error);
+
+  if (sessionType === 'break') {
+    if (profile.breakMusicPath === '__none__') {
+      await StopAudio().catch(console.error);
+      return;
+    }
+
+    const musicPath = profile.breakMusicPath || profile.musicPath;
+    const shuffle = profile.breakMusicPath ? profile.breakShuffle : profile.shuffle;
+    if (musicPath) {
+      if (shuffle) await PlayShuffleFolder(musicPath).catch(console.error);
+      else await PlayLooping(musicPath).catch(console.error);
+    } else {
+      await StopAudio().catch(console.error);
+    }
+    return;
+  }
+
+  if (profile.musicPath) {
+    if (profile.shuffle) await PlayShuffleFolder(profile.musicPath).catch(console.error);
+    else await PlayLooping(profile.musicPath).catch(console.error);
+  } else {
+    await StopAudio().catch(console.error);
+  }
 }
 
 function setRunningUI(running) {
@@ -342,6 +380,7 @@ EventsOn('timerTicked', (data) => {
 });
 
 EventsOn('timerCompleted', async () => {
+  isPaused = false;
   setRunningUI(false);
   fillEl.style.width = '0%';
 
@@ -497,11 +536,13 @@ async function positionMiniTopRight() {
 
     // 2. Find the monitor the app is currently running on
     const currentScreen = screens.find(s => s.isCurrent) || screens[0];
+    const workArea = currentScreen.workArea || await getCurrentWorkArea();
 
     // Safely extract coordinates to avoid undefined errors (since Wails API object structure varies)
-    const sWidth = currentScreen.workArea?.width ?? currentScreen.width ?? window.screen.availWidth;
-    const sX = currentScreen.workArea?.x ?? (currentScreen.x || window.screen.availLeft || 0);
-    const sY = currentScreen.workArea?.y ?? (currentScreen.y || window.screen.availTop || 0);
+    const sWidth = workArea.width ?? currentScreen.width ?? workArea.availWidth ?? window.screen.availWidth;
+    const sHeight = workArea.height ?? currentScreen.height ?? workArea.availHeight ?? window.screen.availHeight;
+    const sX = workArea.x ?? currentScreen.x ?? workArea.availLeft ?? window.screen.availLeft ?? 0;
+    const sY = workArea.y ?? currentScreen.y ?? workArea.availTop ?? window.screen.availTop ?? 0;
 
     // 3. Dynamic DPI Matcher
     // Wails uses physical pixels (e.g. 1920) but JavaScript uses logical pixels (e.g. 1280).
@@ -509,14 +550,24 @@ async function positionMiniTopRight() {
     const logicalWidth = window.screen.availWidth || sWidth;
     const scale = sWidth / logicalWidth;
 
-    const baseMargin = 24; 
+    const baseMargin = 24;
+    const edgeBuffer = Math.round(EDGE_BUFFER * scale);
     
     // Convert JS logical widths into Wails physical widths
     const scaledAppWidth = Math.round(MINI_W * scale);
+    const scaledAppHeight = Math.round(MINI_H * scale);
     const scaledMargin = Math.round(baseMargin * scale);
 
-    const x = Math.round(sX + sWidth - scaledAppWidth - scaledMargin);
-    const y = Math.round(sY + scaledMargin);
+    const x = clamp(
+      Math.round(sX + sWidth - scaledAppWidth - scaledMargin),
+      sX + edgeBuffer,
+      sX + Math.max(edgeBuffer, sWidth - scaledAppWidth - edgeBuffer)
+    );
+    const y = clamp(
+      Math.round(sY + scaledMargin),
+      sY + edgeBuffer,
+      sY + Math.max(edgeBuffer, sHeight - scaledAppHeight - edgeBuffer)
+    );
 
     await WindowSetPosition(x, y);
   } catch (err) {
@@ -526,6 +577,10 @@ async function positionMiniTopRight() {
 
 async function showMini() {
   if (isMiniMode) return;
+  if (miniModeTimeout) {
+    clearTimeout(miniModeTimeout);
+    miniModeTimeout = null;
+  }
   // Save current window geometry
   const size = await WindowGetSize();
   const pos  = await WindowGetPosition();
@@ -542,14 +597,21 @@ async function showMini() {
   await WindowSetSize(MINI_W, MINI_H);
   
   // Give the OS a tiny fraction of a second to apply the size before moving
-  setTimeout(async () => {
+  miniModeTimeout = setTimeout(async () => {
+    if (!isMiniMode) return;
     await positionMiniTopRight();
+    if (!isMiniMode) return;
     await WindowSetAlwaysOnTop(true);
+    miniModeTimeout = null;
   }, 150);
 }
 
 async function hideMini() {
   if (!isMiniMode) return;
+  if (miniModeTimeout) {
+    clearTimeout(miniModeTimeout);
+    miniModeTimeout = null;
+  }
   document.body.classList.remove('mini-mode');
   miniWidget.style.display = 'none';
   isMiniMode = false;
@@ -620,21 +682,19 @@ startBtn.addEventListener('click', async () => {
     // Timer is paused - resume it
     isPaused = false;
     setRunningUI(true);
+    const timerState = await GetTimerState().catch(console.error);
+    const { profile: resumedProfile, sessionType: resumedSessionType } = resolveProfileForSession(timerState?.profileId, activeProfile);
     // Resume timer with current remaining time
     await ResumeTimer({
-      ProfileID: activeProfile?.id || profileSelect.value,
+      ProfileID: timerState?.profileId || resumedProfile?.id || profileSelect.value,
       TotalSec: totalSec,
       RemainingSec: remainSec
     }).catch(console.error);
-    // Resume audio if profile has music and not muted
-    if (!isMuted && activeProfile?.musicPath && settings.autoStartAudio !== false) {
-      await SetVolume(settings.defaultVolume ?? 70).catch(console.error);
-      if (activeProfile.shuffle) {
-        await PlayShuffleFolder(activeProfile.musicPath).catch(console.error);
-      } else {
-        await PlayLooping(activeProfile.musicPath).catch(console.error);
-      }
+    if (resumedProfile) {
+      activeProfile = resumedProfile;
+      sessionType = resumedSessionType;
     }
+    await startAudioForSession(resumedProfile, resumedSessionType);
   } else {
     // Timer is stopped - start new session
     const sel = profiles.find(p => p.id === profileSelect.value) || profiles[0];
@@ -691,13 +751,12 @@ resumeBtn.addEventListener('click', async () => {
   updateTimerUI(remainSec, totalSec);
   setRunningUI(true);
   await ResumeTimer(savedSession).catch(console.error);
-  // Restart audio for the resumed profile
-  const prof = profiles.find(p => p.id === savedSession.profileId);
-  if (!isMuted && prof && prof.musicPath && settings.autoStartAudio !== false) {
-    await SetVolume(settings.defaultVolume ?? 70).catch(console.error);
-    if (prof.shuffle) await PlayShuffleFolder(prof.musicPath).catch(console.error);
-    else              await PlayLooping(prof.musicPath).catch(console.error);
+  const { profile: resumedProfile, sessionType: resumedSessionType } = resolveProfileForSession(savedSession.profileId);
+  if (resumedProfile) {
+    activeProfile = resumedProfile;
+    sessionType = resumedSessionType;
   }
+  await startAudioForSession(resumedProfile, resumedSessionType);
 });
 
 profileSelect.addEventListener('change', async () => {
