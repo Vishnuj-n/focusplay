@@ -73,6 +73,7 @@ let settings     = {};
 let totalSec     = 25 * 60;
 let remainSec    = totalSec;
 let isRunning    = false;
+let isPaused     = false;   // NEW: tracks if timer is paused (not stopped)
 let savedSession  = null;
 let sessionType   = 'work'; // 'work' | 'break'
 let activeProfile = null;   // currently running profile
@@ -95,9 +96,22 @@ function updateTimerUI(remaining, total) {
 
 function setRunningUI(running) {
   isRunning = running;
-  startBtn.textContent       = running ? 'Pause' : 'Start';
-  startBtn.style.background  = running ? 'rgba(255,180,50,0.55)' : '';
-  miniPlayPause.textContent  = running ? '\u23F8' : '\u25B6';
+  // Update button text based on running and paused states
+  if (running) {
+    startBtn.textContent = 'Pause';
+    startBtn.style.background = 'rgba(255,180,50,0.55)';
+    miniPlayPause.textContent = '\u23F8';
+  } else if (isPaused) {
+    // Timer is paused (not stopped) - show Resume
+    startBtn.textContent = 'Resume';
+    startBtn.style.background = '';
+    miniPlayPause.textContent = '\u25B6';
+  } else {
+    // Timer is stopped - show Start
+    startBtn.textContent = 'Start';
+    startBtn.style.background = '';
+    miniPlayPause.textContent = '\u25B6';
+  }
 }
 
 // ── Panel helpers ─────────────────────────────────────────────────────────────
@@ -393,6 +407,7 @@ function updateStatsUI(data) {
 
 // ── Timer controls ────────────────────────────────────────────────────────────
 async function startSession(profile) {
+  isPaused = false; // Reset paused state when starting new session
   activeProfile = profile;
   sessionType   = 'work';
   totalSec      = profile.durationSec;
@@ -458,22 +473,54 @@ function updateModeBadge() {
 // ── Mini widget (window-mode switching) ───────────────────────────────────────
 const MINI_W = 220;
 const MINI_H = 170;
-const MINI_MARGIN = 12;
-const MINI_RIGHT_INSET = 18;
+const EDGE_BUFFER = 20; // Safety buffer for window frame/border
+
+function clamp(n, min, max) {
+  return Math.max(min, Math.min(max, n));
+}
+
+async function getCurrentWorkArea() {
+  // Use browser screen API which correctly excludes taskbar/dock on all platforms.
+  const availWidth = window.screen?.availWidth || window.innerWidth;
+  const availHeight = window.screen?.availHeight || window.innerHeight;
+  const availLeft = window.screen?.availLeft || 0;
+  const availTop = window.screen?.availTop || 0;
+
+  return { availWidth, availHeight, availLeft, availTop };
+}
 
 async function positionMiniTopRight() {
   try {
+    // 1. Use native Wails screen API to bypass JS DPI scaling bugs
     const screens = await ScreenGetAll();
-    const current = screens.find(s => s.isCurrent) || screens.find(s => s.isPrimary);
-    const screenW = current?.width || window.innerWidth;
-    const size = await WindowGetSize();
-    const windowW = size?.w || MINI_W;
-    const x = Math.max(0, screenW - windowW - MINI_MARGIN - MINI_RIGHT_INSET);
-    WindowSetPosition(x, MINI_MARGIN);
-  } catch (_) {
-    // Fall back to viewport dimensions if screen data is unavailable.
-    const x = Math.max(0, window.innerWidth - MINI_W - MINI_MARGIN - MINI_RIGHT_INSET);
-    WindowSetPosition(x, MINI_MARGIN);
+    if (!screens || screens.length === 0) return;
+
+    // 2. Find the monitor the app is currently running on
+    const currentScreen = screens.find(s => s.isCurrent) || screens[0];
+
+    // Safely extract coordinates to avoid undefined errors (since Wails API object structure varies)
+    const sWidth = currentScreen.workArea?.width ?? currentScreen.width ?? window.screen.availWidth;
+    const sX = currentScreen.workArea?.x ?? (currentScreen.x || window.screen.availLeft || 0);
+    const sY = currentScreen.workArea?.y ?? (currentScreen.y || window.screen.availTop || 0);
+
+    // 3. Dynamic DPI Matcher
+    // Wails uses physical pixels (e.g. 1920) but JavaScript uses logical pixels (e.g. 1280).
+    // We dynamically calculate this difference to ensure the window width (220) scales correctly.
+    const logicalWidth = window.screen.availWidth || sWidth;
+    const scale = sWidth / logicalWidth;
+
+    const baseMargin = 24; 
+    
+    // Convert JS logical widths into Wails physical widths
+    const scaledAppWidth = Math.round(MINI_W * scale);
+    const scaledMargin = Math.round(baseMargin * scale);
+
+    const x = Math.round(sX + sWidth - scaledAppWidth - scaledMargin);
+    const y = Math.round(sY + scaledMargin);
+
+    await WindowSetPosition(x, y);
+  } catch (err) {
+    console.error("Positioning error:", err);
   }
 }
 
@@ -489,10 +536,16 @@ async function showMini() {
   document.body.classList.add('mini-mode');
   isMiniMode = true;
 
-  WindowSetMinSize(MINI_W, MINI_H);
-  WindowSetSize(MINI_W, MINI_H);
-  await positionMiniTopRight();
-  WindowSetAlwaysOnTop(true);
+  // IMPORTANT: Await the size changes before moving, otherwise the OS window manager 
+  // might race the resize and move commands, causing it to center instead!
+  await WindowSetMinSize(MINI_W, MINI_H);
+  await WindowSetSize(MINI_W, MINI_H);
+  
+  // Give the OS a tiny fraction of a second to apply the size before moving
+  setTimeout(async () => {
+    await positionMiniTopRight();
+    await WindowSetAlwaysOnTop(true);
+  }, 150);
 }
 
 async function hideMini() {
@@ -555,17 +608,42 @@ miniPlayPause.addEventListener('click', () => {
 })();
 
 startBtn.addEventListener('click', async () => {
-  if (!isRunning) {
+  if (isRunning) {
+    // Timer is running - pause it
+    isPaused = true;
+    setRunningUI(false); // This will show "Resume" since isPaused=true
+    await PauseTimer().catch(console.error);
+    // Note: We still call StopAudio() because audio service doesn't have pause functionality
+    // This is a limitation - audio will stop instead of pause
+    await StopAudio().catch(console.error);
+  } else if (isPaused) {
+    // Timer is paused - resume it
+    isPaused = false;
+    setRunningUI(true);
+    // Resume timer with current remaining time
+    await ResumeTimer({
+      ProfileID: activeProfile?.id || profileSelect.value,
+      TotalSec: totalSec,
+      RemainingSec: remainSec
+    }).catch(console.error);
+    // Resume audio if profile has music and not muted
+    if (!isMuted && activeProfile?.musicPath && settings.autoStartAudio !== false) {
+      await SetVolume(settings.defaultVolume ?? 70).catch(console.error);
+      if (activeProfile.shuffle) {
+        await PlayShuffleFolder(activeProfile.musicPath).catch(console.error);
+      } else {
+        await PlayLooping(activeProfile.musicPath).catch(console.error);
+      }
+    }
+  } else {
+    // Timer is stopped - start new session
     const sel = profiles.find(p => p.id === profileSelect.value) || profiles[0];
     if (sel) await startSession(sel);
-  } else {
-    setRunningUI(false);
-    await PauseTimer().catch(console.error);
-    await StopAudio().catch(console.error);
   }
 });
 
 stopBtn.addEventListener('click', async () => {
+  isPaused = false; // Reset paused state when stopping
   setRunningUI(false);
   sessionType = 'work';
   totalSec    = activeProfile ? activeProfile.durationSec : totalSec;
@@ -578,6 +656,7 @@ stopBtn.addEventListener('click', async () => {
 });
 
 skipBtn.addEventListener('click', async () => {
+  isPaused = false; // Reset paused state when skipping
   setRunningUI(false);
   await StopTimer().catch(console.error);
 
@@ -624,7 +703,11 @@ resumeBtn.addEventListener('click', async () => {
 profileSelect.addEventListener('change', async () => {
   const sel = profiles.find(p => p.id === profileSelect.value);
   if (!sel) return;
-  if (isRunning) { await StopTimer().catch(console.error); setRunningUI(false); }
+  if (isRunning) { 
+    await StopTimer().catch(console.error); 
+    setRunningUI(false); 
+  }
+  isPaused = false; // Reset paused state when switching profiles
   // Always stop audio when switching profiles
   await StopAudio().catch(console.error);
   totalSec  = sel.durationSec;

@@ -17,8 +17,7 @@ var assets embed.FS
 var chimeData []byte
 
 func main() {
-	a := app.New()
-	a.SetChimeData(chimeData)
+	a := app.New(chimeData)
 
 	err := wails.Run(&options.App{
 		Title:            "FocusPlay",
@@ -31,7 +30,8 @@ func main() {
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
-		OnStartup: a.Startup,
+		OnStartup:  a.Startup,
+		OnDomReady: a.DomReady,
 		Bind: []interface{}{
 			a,
 		},

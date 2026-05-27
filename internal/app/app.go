@@ -29,31 +29,34 @@ type App struct {
 }
 
 // New creates and wires up all services.
-func New() *App {
+func New(chimeData []byte) *App {
 	dir := storage.DataDir()
 	ps := persistence.New(dir)
+	audioSvc := audio.New()
+	audioSvc.SetChimeData(chimeData)
 	return &App{
 		profiles:    profile.New(dir),
 		persistence: ps,
 		timer:       timer.New(ps),
-		audio:       audio.New(),
+		audio:       audioSvc,
 		settings:    settings.New(dir),
 		stats:       stats.New(dir),
 	}
 }
 
-// SetChimeData sets the embedded chime audio data in the audio service.
-func (a *App) SetChimeData(chimeData []byte) {
-	a.audio.SetChimeData(chimeData)
-}
-
 // Startup is called by Wails after the window is ready.
 func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
+
 	e := events.NewWailsEmitter(ctx)
 	a.timer.SetEmitter(e)
 	a.audio.SetEmitter(e)
 	a.profiles.Load()
+}
+
+// DomReady is called after the front-end DOM has been loaded.
+func (a *App) DomReady(ctx context.Context) {
+	runtime.WindowCenter(ctx)
 }
 
 // ── Profile methods (bound to JS) ───────────────────────────────────────────
@@ -76,25 +79,25 @@ func (a *App) DeleteProfile(id string) error {
 
 // ── File / folder pickers (bound to JS) ─────────────────────────────────────
 
-func (a *App) PickMusicFile() string {
+func (a *App) PickMusicFile() (string, error) {
 	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
 		Title:   "Select MP3 file",
 		Filters: []runtime.FileFilter{{DisplayName: "MP3 Audio (*.mp3)", Pattern: "*.mp3"}},
 	})
 	if err != nil {
-		return ""
+		return "", err
 	}
-	return path
+	return path, nil
 }
 
-func (a *App) PickMusicFolder() string {
+func (a *App) PickMusicFolder() (string, error) {
 	path, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
 		Title: "Select music folder",
 	})
 	if err != nil {
-		return ""
+		return "", err
 	}
-	return path
+	return path, nil
 }
 
 // ── Session persistence (bound to JS) ───────────────────────────────────────
