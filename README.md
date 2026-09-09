@@ -1,125 +1,122 @@
 <p align="center">
-  <img src="logo.png" width="200">
+  <img src="logo.png" width="200" alt="FocusPlay Logo">
 </p>
 
-# FocusPlay
+<h1 align="center">FocusPlay</h1>
 
-**v1.0.0** | A lightweight, distraction-free Pomodoro timer built with Wails and Go.
+<p align="center">
+  <strong>Lock In with Your Own Offline Music • Zero Streaming Distractions • Local Pomodoro Engine</strong>
+</p>
 
-FocusPlay helps you manage work sessions with customizable profiles, background music, and session tracking. It's designed to help you stay focused while providing a pleasant, customizable environment.
+<p align="center">
+  <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-blue?style=flat-square" alt="Platform">
+  <img src="https://img.shields.io/badge/Go-1.23+-00ADD8?style=flat-square&logo=go" alt="Go">
+  <img src="https://img.shields.io/badge/Wails-v2-DF1A29?style=flat-square" alt="Wails">
+  <img src="https://img.shields.io/badge/Audio-100%25%20Offline-success?style=flat-square" alt="Offline Audio">
+</p>
 
-## Features
+---
 
-- **Pomodoro Workflow**: Customizable work and break durations.
-- **Profiles**: Create multiple profiles (e.g., "Deep Work", "Reading") with independent settings.
-- **Background Audio**:
-  - Play looping single tracks or shuffle entire music folders.
-  - Separate audio settings for work and break sessions.
-  - Supports MP3 files.
-- **Mini Timer Mode**: A compact, always-on-top widget to keep track of time without distractions.
-- **Session Persistence**: Automatically saves progress; resume your work exactly where you left off if the app closes.
-- **Themes**: Choose from Dark, Ocean, Forest, or Minimal Black themes.
-- **Statistics**: Track daily sessions and streak counts.
-- **Smart Settings**: Auto-start next timer, auto-play audio, and desktop notifications.
+## 🎧 Why FocusPlay?
 
-## Project Structure
+Most Pomodoro apps force you into generic lo-fi streams, require internet access, or make you fiddle with external browser tabs and Spotify playlists that break your flow.
 
-```
-├── build/             # Build artifacts and installer scripts
-├── docs/              # Detailed documentation
-├── frontend/          # Vite + Vanilla JS frontend
-│   ├── src/           # UI source code (HTML, CSS, JS)
-│   └── wailsjs/       # Auto-generated Go bindings
-├── internal/          # Go backend code
-│   ├── app/           # Main application logic and Wails binding
-│   ├── services/      # Core services (Timer, Audio, Persistence, etc.)
-│   └── infra/         # Infrastructure (Storage, Events)
-└── main.go            # Application entry point
-```
+**FocusPlay is built around your own local audio vault.** Whether you need that single legendary soundtrack looping endlessly for intense coding sprints or an entire directory of instrumental tracks on shuffle, FocusPlay gives you pure offline immersion with zero lag and zero online distractions.
 
-## Prerequisites
+> **Plug in your headphones, point to your local tracks or folders, and dial directly into the zone.**
 
+---
+
+## ✨ Key Highlights
+
+### 🎵 1. Bring Your Own Music (100% Offline)
+- **Seamless Single-Track Looping**: Lock into hyper-focus by putting your favorite track or ambient soundscape on a continuous, seamless loop.
+- **Folder Shuffle & Playlists**: Point FocusPlay to any local music directory (`.mp3`) and let it shuffle through your study/focus soundtrack.
+- **Work vs. Break Soundtracks**: Automatically switch audio modes—e.g., high-focus synthwave during work intervals and calming ambient soundscapes during breaks.
+- **Zero Internet / Zero Ads**: Works completely offline. No buffering, no subscriptions, no algorithmic recommendations pulling you away from work.
+
+### ⏱️ 2. Distraction-Free Pomodoro Engine
+- **Mini Timer Overlay**: Switch to an ultra-compact, always-on-top mini widget (`M`) that floats discreetly over your IDE or workspace.
+- **Custom Profiles**: Configure tailor-made profiles (e.g., *"Deep Work"*, *"Bug Bashing"*, *"Writing"*, *"Reading"*) with unique timers and audio assignments.
+- **Session Persistence**: Never lose your momentum. Progress is automatically saved across restarts.
+- **Smart Automations**: Configurable auto-start intervals, auto-play audio transitions, and native desktop notifications.
+
+---
+
+## ⌨️ Keyboard Shortcuts
+
+Stay on your keyboard without touching the mouse:
+
+| Shortcut | Action |
+| :--- | :--- |
+| <kbd>Space</kbd> | Start / Pause Timer |
+| <kbd>Esc</kbd> | Stop / Reset Timer |
+| <kbd>S</kbd> | Skip current session or break |
+| <kbd>M</kbd> | Toggle Minimal Floating Mini-Timer Mode |
+
+---
+
+## 🚀 Quick Start & Installation
+
+### Windows Installer
+1. Download the latest installer from [Releases](https://github.com/Vishnuj-n/focusplay/releases) (or grab `build/bin/focusplay.exe`).
+2. Run the `.exe` installer.
+3. Launch **FocusPlay** and select your music folder or loop track.
+
+---
+
+### 🛠️ Building from Source
+
+#### Prerequisites
 - **Go 1.23+**
-- **Node.js 18+**
+- **Node.js 18+** & npm
 - **Wails CLI**: `go install github.com/wailsapp/wails/v2/cmd/wails@latest`
 
-## Installation
+#### Build Steps
+```bash
+# 1. Clone repository
+git clone https://github.com/Vishnuj-n/focusplay.git
+cd focusplay
 
-### Windows (Installer)
-1. Download the latest installer from the Releases page (or `build/bin/` if built locally).
-2. Run the installer (`.exe`).
-3. Launch FocusPlay from your Start Menu.
+# 2. Install dependencies
+go mod tidy
+cd frontend && npm install && cd ..
 
-### Building from Source
+# 3. Run live development mode
+wails dev
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/yourusername/focusplay.git
-   cd focusplay
-   ```
+# 4. Or compile a production binary (Windows)
+wails build --nsis
+```
 
-2. **Install dependencies:**
-   ```bash
-   go mod tidy
-   cd frontend && npm install && cd ..
-   ```
+---
 
-3. **Build the application:**
-   - **Windows:**
-     ```bash
-     wails build --nsis
-     ```
-     *Output: `build/bin/focusplay.exe` and installer.*
+## 📂 Project Structure
 
-   - **macOS:**
-     ```bash
-     wails build --platform darwin/universal
-     ```
+```
+├── build/             # Build artifacts and NSIS installer configs
+├── docs/              # Detailed guides (INSTALLATION.md, USAGE.md, etc.)
+├── frontend/          # Vite + Vanilla JS UI (HTML, CSS, JS)
+│   ├── src/           # UI components, themes, and audio controllers
+│   └── wailsjs/       # Auto-generated Go-to-JS bridge
+├── internal/          # Core Go backend
+│   ├── app/           # App lifecycle & Wails bindings
+│   ├── services/      # Audio (beep engine), Timer, and Persistence
+│   └── infra/         # Storage and event bus
+└── main.go            # Application entrypoint
+```
 
-   - **Linux:**
-     ```bash
-     wails build --platform linux/amd64
-     ```
+---
 
-4. **Run Development Mode:**
-   ```bash
-   wails dev
-   ```
-   *Starts the app with hot-reload for frontend changes.*
+## 📖 Documentation
 
-## Usage
+- **[USAGE.md](docs/USAGE.md)**: Full guide to profiles, music configuration, and custom themes.
+- **[INSTALLATION.md](docs/INSTALLATION.md)**: Detailed platform build guides (macOS / Linux / Windows).
+- **[CONTRIBUTING.md](docs/CONTRIBUTING.md)**: Contribution guidelines and architecture notes.
+- **[CHANGELOG.md](docs/CHANGELOG.md)**: Version release notes.
 
-### Keyboard Shortcuts
-- **Space**: Start / Pause timer
-- **Esc**: Stop timer
-- **S**: Skip current session (or break)
-- **M**: Toggle Mini Timer mode
+---
 
-### Managing Profiles
-Click the **Profiles** icon (top-left) to create or edit profiles. You can set specific durations for work/break and assign specific music files or folders to each.
+## 📄 License
 
-### Settings
-Click the **Settings** icon (gear) to configure:
-- Default volume
-- Auto-start audio behavior
-- Notifications
-- Auto-start next session
-- App Theme
-
-## Architecture
-
-FocusPlay is built using the **Wails** framework, which combines the power of Go for the backend with web technologies for the frontend.
-
-- **Backend (Go)**: Handles the timer logic, audio playback (using `gopxl/beep`), file system interactions, and data persistence.
-- **Frontend (HTML/CSS/JS)**: Provides the user interface, communicating with the backend via Wails' unified bindings.
-
-## Documentation
-
-- **[INSTALLATION.md](docs/INSTALLATION.md)**: Detailed build and installation steps.
-- **[USAGE.md](docs/USAGE.md)**: Comprehensive user guide.
-- **[CONTRIBUTING.md](docs/CONTRIBUTING.md)**: Guidelines for contributing.
-- **[CHANGELOG.md](docs/CHANGELOG.md)**: Version history.
-
-## License
-
-See LICENSE file in the project root.
+Distributed under the MIT License. See `LICENSE` for more information.
