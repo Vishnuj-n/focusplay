@@ -874,6 +874,18 @@ async function init() {
 
   // Load footer stats
   try { updateStatsUI(await GetStats()); } catch (e) {}
+
+  // Ensure window/webview has focus so keyboard shortcuts (Space, Esc, etc.) work immediately
+  window.focus();
+  document.body.focus();
 }
+
+// Also refocus window on mouseenter/visibilitychange to guarantee shortcuts keep working
+window.addEventListener('focus', () => { document.body.focus(); });
+window.addEventListener('mouseenter', () => {
+  if (document.activeElement === document.body || !document.activeElement) {
+    window.focus();
+  }
+});
 
 init();
